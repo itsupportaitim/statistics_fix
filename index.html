@@ -35,6 +35,33 @@
             background: rgba(255, 255, 255, 0.05);
             border-radius: 10px;
         }
+        .search-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            text-align: center;
+        }
+        .search-input {
+            padding: 12px;
+            font-size: 1em;
+            border: none;
+            border-radius: 5px;
+            width: 300px;
+            margin-right: 10px;
+        }
+        .search-btn {
+            padding: 12px 20px;
+            font-size: 1em;
+            background: #00d2ff;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .search-btn:hover {
+            background: #0099cc;
+        }
         .chart-title {
             text-align: center;
             font-size: 1.8em;
@@ -64,6 +91,12 @@
             color: #ff6b6b;
             font-weight: bold;
         }
+        #searchResults {
+            text-align: center;
+            margin: 10px 0;
+            font-size: 1em;
+            color: #00d2ff;
+        }
     </style>
 </head>
 <body>
@@ -82,10 +115,21 @@
             <div id="weeklyContainer"><div class="loading">Loading bars...</div></div>
             <canvas id="weeklyBars"></canvas>
         </div>
+
+        <div class="search-section">
+            <h2 class="chart-title">Custom GroupName Search Intensity</h2>
+            <p class="chart-subtitle">Enter text to filter groupName (case-insensitive) and see its 24hr wave</p>
+            <input type="text" id="searchInput" class="search-input" placeholder="e.g., Farkhod Faiziev">
+            <button class="search-btn" onclick="performSearch()">Search</button>
+            <div id="searchResults"></div>
+            <div id="searchContainer" style="display:none;"><div class="loading">Loading search wave...</div></div>
+            <canvas id="searchWave" style="display:none;"></canvas>
+        </div>
     </div>
 
+    <script src="search-intensity.js"></script>
     <script>
-        // Hourly Wave (Line Chart)
+        // Hourly Wave (Line Chart) - unchanged
         async function renderHourlyWave() {
             try {
                 const response = await fetch('hourly-aggregate.json');
@@ -130,7 +174,7 @@
             }
         }
 
-        // Weekly Bars (Bar Chart)
+        // Weekly Bars (Bar Chart) - unchanged
         async function renderWeeklyBars() {
             try {
                 const response = await fetch('weekly-aggregate.json');
@@ -167,7 +211,67 @@
             }
         }
 
-        // Render on load
+        // New: Perform search and render
+        async function performSearch() {
+            const searchText = document.getElementById('searchInput').value.trim();
+            if (!searchText) {
+                document.getElementById('searchResults').innerHTML = '<span class="error">Enter some text to search!</span>';
+                return;
+            }
+
+            document.getElementById('searchResults').innerHTML = '<div class="loading">Searching...</div>';
+            document.getElementById('searchContainer').style.display = 'block';
+            document.getElementById('searchWave').style.display = 'none';
+
+            try {
+                const hourlyData = await getHourlyStatsForText(searchText);
+                if (hourlyData.length === 0 || hourlyData.every(item => item.count === 0)) {
+                    throw new Error('No matches found for your search.');
+                }
+
+                document.getElementById('searchResults').innerHTML = `<div>Found ${hourlyData.reduce((sum, item) => sum + item.count, 0)} total requests matching "${searchText}".</div>`;
+
+                const ctx = document.getElementById('searchWave').getContext('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: hourlyData.map(item => item.hour.toString()),
+                        datasets: [{
+                            label: `Filtered Flow: "${searchText}"`,
+                            data: hourlyData.map(item => item.count),
+                            borderColor: '#ff6384',
+                            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                            fill: true,
+                            tension: 0.4,
+                            pointBackgroundColor: '#ff6384',
+                            pointBorderColor: '#ffffff',
+                            pointRadius: 4,
+                            borderWidth: 3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#fff' } },
+                            x: { 
+                                grid: { color: 'rgba(255,255,255,0.1)' }, 
+                                ticks: { color: '#fff', maxRotation: 0 }
+                            }
+                        },
+                        plugins: { legend: { labels: { color: '#fff' } } },
+                        animation: { duration: 1500, easing: 'easeInOutQuart' }
+                    }
+                });
+                document.getElementById('searchContainer').innerHTML = '';
+                document.getElementById('searchWave').style.display = 'block';
+            } catch (error) {
+                document.getElementById('searchResults').innerHTML = `<div class="error">Error: ${error.message}</div>`;
+                document.getElementById('searchContainer').style.display = 'none';
+            }
+        }
+
+        // Render on load - unchanged
         window.addEventListener('load', () => {
             renderHourlyWave();
             renderWeeklyBars();
